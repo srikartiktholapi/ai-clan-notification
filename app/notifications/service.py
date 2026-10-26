@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 from typing import Any
 import logging
-
 from sqlalchemy import text
-
 from app.database.connection import engine
 from app.database.notification_repository import get_next_manual_notification_for_user
 from app.database.user_repository import get_user
@@ -94,7 +91,6 @@ class NotificationService:
     def _get_user_profile(
         self,
         user_id: int,
-        require_video_language: bool = False,
     ) -> dict[str, Any]:
         profile = get_user(user_id, self.db_engine)
         if profile is None:
@@ -312,10 +308,7 @@ class NotificationService:
         user_id: int,
         flow: str,
     ) -> tuple[str, dict[str, Any]] | None:
-        profile = self._get_user_profile(
-            user_id,
-            require_video_language=flow == "performance",
-        )
+        profile = self._get_user_profile(user_id)
         if profile is None:
             return None
         user_name = str(profile["user_name"]).strip() or f"User {user_id}"
@@ -490,7 +483,7 @@ class NotificationService:
             if flow == "sentiment":
                 return None
             if allow_fallback:
-                profile = self._get_user_profile(user_id, require_video_language=flow == "performance")
+                profile = self._get_user_profile(user_id)
                 user_name = profile["user_name"] if profile else f"User {user_id}"
                 self.last_skip_reason = self.last_skip_reason or MISSING_REQUIRED_DATA
                 notification_data = self._fallback_notification(
@@ -651,7 +644,7 @@ class NotificationService:
             if flow == "sentiment":
                 return None
             if allow_fallback:
-                profile = self._get_user_profile(user_id, require_video_language=flow == "performance")
+                profile = self._get_user_profile(user_id)
                 user_name = profile["user_name"] if profile else f"User {user_id}"
                 self.last_skip_reason = self.last_skip_reason or MISSING_REQUIRED_DATA
                 notification_data = self._fallback_notification(

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # AI-CLAN Notification
 
 AI-CLAN exposes one common notification pipeline for three business flows:
@@ -38,50 +37,44 @@ to `.env`. Never commit `.env`.
 uvicorn app.main:app --reload
 ```
 
-Startup validates the database URL and LLM key. OpenAI is the default
-embedding provider when `OPENAI_API_KEY` is present. To use local Sentence
-Transformers embeddings, set `EMBEDDING_PROVIDER=sentence_transformers`.
+Startup validates the database URL and LLM key. The active video recommender
+uses the Sentence Transformers `all-MiniLM-L6-v2` model. Although embedding
+provider and model settings are available, the active embedding function does
+not currently use them.
 
 ## Run a notification
 
-6. Trigger the performance flow after the API starts:
+6. Request the next notification after the API starts:
 
 ```powershell
 Invoke-RestMethod -Method Post `
 	-Uri http://127.0.0.1:8000/notification/send `
 	-ContentType "application/json" `
-	-Body '{"user_id":953,"flow":"performance","should_send":true}'
+	-Body '{"user_id":953}'
 ```
 
-7. Verify the response has `remote_send_status` set to `sent` and contains a
-`video_id`, matching `reference_id`, and a deep link such as `/videos/123`.
-The configured notification provider receives that exact video ID as
-`reference_id`.
-
-8. When the user clicks the notification, the client uses `deep_link` to open
-that exact video route. The video screen resolves the supplied ID and starts
-that video instead of opening a generic video list.
+7. Verify the response has `success` set to `true` and inspect the returned
+`notification`. Its `reference_id` identifies the related item when applicable.
 
 ## Test
 
-Run the complete mocked test suite with:
+Run the test suite with:
 
 ```powershell
 pytest
 ```
 
-Tests mock external database, embedding, OpenAI, vector-search, and sender
-calls. A real end-to-end send additionally requires reachable production
-services.
+Most unit tests mock database and external-service calls. However,
+`tests/test_performance.py` and
+`tests/test_recommendation.py::test_user_language_id_maps_to_language_table`
+query the database configured by `DATABASE_URL` directly. Run those tests
+only with an isolated test database. Real end-to-end sends require a safe
+test notification endpoint.
 
-Read a user's performance result:
+Read a user's performance result with the `user_id` query parameter:
 
 ```http
-GET /notification/performance
-```
-
-```json
-{"user_id": 953}
+GET /notification/performance?user_id=953
 ```
 
 The read-only flow endpoints are:
@@ -90,11 +83,6 @@ The read-only flow endpoints are:
 - `GET /notification/engagement`
 - `GET /notification/sentiment`
 
-Each accepts the same JSON request body. Only `POST /notification/send`
-generates and sends a personalized notification.
-
-The optional `flow` value is `performance`, `engagement`, or `sentiment`. All
-flows produce the same notification object and use the same remote sender.
-=======
-# ai-clan-notification
->>>>>>> 58b73495156fed04d57f13aebd584ab7ac400484
+Each endpoint accepts `user_id` as a query parameter. `POST /notification/send`
+accepts a JSON body containing `user_id`; the notification type is selected
+from the user's notification history.

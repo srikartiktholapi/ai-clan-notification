@@ -1,0 +1,71 @@
+flowchart TD
+    subgraph Startup["Application startup"]
+        ASGI["Uvicorn: app.main:app"] --> Life["lifespan() — app/main.py"]
+        Life --> Validate["validate_configuration() — app/config.py"]
+        Life --> Start["start_scheduler() — scripts/apscheduler_runner.py"]
+        Start --> Cron["Daily CronTrigger<br/>CRON_HOUR:CRON_MINUTE, Asia/Kolkata"]
+        Cron --> Daily["run_daily.main() — scripts/run_daily.py"]
+    end
+
+    subgraph Scheduled["Scheduled notification path"]
+        Daily --> Users["_collect_users()"]
+        Users --> Process["_process_user_async()"]
+        Process --> Select["get_next_notification_for_user()<br/>history selector"]
+        Process --> Dupe{"has_notification_for_user_on_date()?"}
+        Dupe -- "Already exists" --> Skip["SKIPPED: ALREADY_NOTIFIED_TODAY"]
+        Dupe -- "No duplicate / test mode" --> FlowMap["FLOW_BY_EVENT_TYPE"]
+        FlowMap --> AsyncService["NotificationService.build_notification_async()"]
+    end
+
+    subgraph Manual["Manual API path"]
+        Client["POST /notification/send<br/>body: {user_id}"] --> Api["send_notification() — app/main.py"]
+        Api --> SyncService["NotificationService.build_notification()"]
+        SyncService --> ManualSelect["get_next_manual_notification_for_user()"]
+    end
+
+    subgraph Build["Shared service flow"]
+        AsyncService --> Context["_build_flow_context()"]
+        SyncService --> Context
+        ManualSelect --> Context
+        Context --> Profile["get_user()"]
+        Context --> Perf["calculate_performance()"]
+        Perf --> KiiQuery["get_last_7_days_kii_performance()"]
+        Context --> Video["recommend_video()"]
+        Video --> Embed["embed_text(): SentenceTransformer"]
+        Video --> Search["search_videos(): PostgreSQL/pgvector"]
+        Context --> Sentiment["get_user_response_rate() / get_eligible_user_qa()"]
+        Context --> Prompt["flow-specific prompt builder"]
+        Prompt --> LLM["NotificationGenerator → OpenAI Responses API"]
+        LLM --> Model["NotificationEngine.make_notification()"]
+        Model --> Sender["NotificationSender.send()/send_async()"]
+        Sender --> Remote["REMOTE_NOTIFICATION_SEND_URL<br/>remote receiver"]
+        Remote -. "Q/A send success only" .-> SentHistory["save_sentiment_notification_history()"]
+    end
+
+    subgraph Storage["PostgreSQL"]
+        UserDB[("user / language tables")]
+        KiiDB[("key_input_indicators / key_input_target / kii_master")]
+        VideoDB[("content / relations / embeddings / watched history")]
+        NotificationDB[("public.notification history")]
+        SentDB[("sentiment_notification_history")]
+    end
+
+    Profile --> UserDB
+    KiiQuery --> KiiDB
+    Search --> VideoDB
+    Select --> NotificationDB
+    Dupe --> NotificationDB
+    SentHistory --> SentDB
+
+    Skip --> Done["Continue/return status"]
+    Sender --> Outcome{"Sender / runner outcome"}
+    Outcome -- "HTTP success; scheduler status 200" --> Success["SUCCESS"]
+    Outcome -- "Failure or scheduler status != 200" --> Failed["FAILED"]
+    Outcome -- "No eligible data" --> Skipped["SKIPPED or API error"]
+
+    classDef app fill:#e8f1ff,stroke:#3266a8,color:#111;
+    classDef db fill:#fff2cc,stroke:#9c7a00,color:#111;
+    classDef ext fill:#fce4d6,stroke:#b45309,color:#111;
+    class ASGI,Life,Validate,Start,Cron,Daily,Users,Process,Select,Dupe,Skip,FlowMap,AsyncService,Client,Api,SyncService,ManualSelect,Context,Profile,Perf,KiiQuery,Video,Embed,Search,Sentiment,Prompt,LLM,Model,Sender,Done,Outcome,Success,Failed,Skipped app;
+    class UserDB,KiiDB,VideoDB,NotificationDB,SentDB db;
+    class Remote ext;
